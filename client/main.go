@@ -1,123 +1,73 @@
 package main
 
 import (
-	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
-	"github.com/AidosKuneen/cuckoo"
+	"golang.org/x/crypto/blake2b"
 )
 
 const (
 	serverAddress = "127.0.0.1:12345"
+	difficulty    = 5
 )
 
-func findCuckooCycleSolution(ctx context.Context, nonce string) (string, error) {
-	solver := cuckoo.NewCuckoo()
-	var proof []uint32
-	var success bool
-
-	for !success {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		default:
-		}
-		proof, success = solver.PoW([]byte(nonce))
-	}
-
-	proofBytes := make([]byte, len(proof)*4)
-	for i, val := range proof {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		default:
-		}
-
-		proofBytes[i*4] = byte(val >> 24)
-		proofBytes[i*4+1] = byte(val >> 16)
-		proofBytes[i*4+2] = byte(val >> 8)
-		proofBytes[i*4+3] = byte(val)
-	}
-
-	return hex.EncodeToString(proofBytes), nil
-}
-
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
 	var (
-		attempt = 1
-		startAt = time.Now()
+		startAt  = time.Now()
+		solution string
 	)
-	for {
-		slog.Info("connecting ask challenge")
-		conn, err := net.Dial("tcp", serverAddress)
-		if err != nil {
-			log.Fatalf("error connecting to server: %s", err)
-		}
-		slog.Info("done connecting ask challenge")
+	defer func() {
+		slog.Info("done", "solution", solution, "duration", time.Since(startAt))
+	}()
 
-		buf := make([]byte, 1024)
-		n, err := conn.Read(buf)
-		if err != nil {
-			log.Fatalf("error reading from server: %s", err)
-		}
-
-		solution, err := startConnectionChallenge(ctx, buf, n)
-		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			attempt++
-			conn.Close()
-			slog.Warn("timeout solve challenge. try again new challenge task.")
-			continue
-		case err != nil:
-			panic(err)
-		default:
-			slog.Info("done", "solution", solution, "attempts", attempt, "duration", time.Since(startAt))
-			conn.Write([]byte(solution))
-
-			n, err = conn.Read(buf)
-			if err != nil {
-				log.Fatalf("error reading from server: %s", err)
-			}
-			conn.Close()
-
-			slog.Info(string(buf[:n]))
-			os.Exit(0)
-		}
+	conn, err := net.Dial("tcp", serverAddress)
+	if err != nil {
+		slog.Error("failed to connect to server", "error", err)
+		return
 	}
+	defer conn.Close()
+
+	data := "Hello, Server!"
+	hash, nonce := performPoW(data)
+	message := fmt.Sprintf("%s:%d:%s", data, nonce, hash)
+
+	_, err = conn.Write([]byte(message))
+	if err != nil {
+		slog.Error("failed to write message", "error", err)
+		return
+	}
+
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		slog.Error("failed to read message", "error", err)
+		return
+	}
+	solution = string(buffer[:n])
 }
 
-func startConnectionChallenge(ctx context.Context, buf []byte, n int) (string, error) {
-	message := string(buf[:n])
-	parts := strings.Split(message, ":")
-	algorithm := parts[0]
-	nonce := parts[1]
-
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
-	defer cancel()
-
+func performPoW(data string) (string, int) {
 	var (
-		solution string
-		err      error
+		nonce  = 0
+		hash   string
+		target = strings.Repeat("0", difficulty)
 	)
-	switch algorithm {
-	case "CuckooCycle":
-		solution, err = findCuckooCycleSolution(ctx, nonce)
-	default:
-		return "", fmt.Errorf("unknown algorithm: %s", algorithm)
+
+	for {
+		nonce++
+		record := fmt.Sprintf("%s%d", data, nonce)
+		h := blake2b.Sum256([]byte(record))
+		hash = hex.EncodeToString(h[:])
+
+		if hash[:difficulty] == target {
+			break
+		}
 	}
 
-	return solution, err
+	return hash, nonce
 }

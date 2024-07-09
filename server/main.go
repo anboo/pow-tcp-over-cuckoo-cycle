@@ -3,67 +3,17 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"log/slog"
-	"math/rand"
 	"net"
-	"time"
+	"strconv"
+	"strings"
 
-	"github.com/AidosKuneen/cuckoo"
+	"golang.org/x/crypto/blake2b"
 )
 
 const (
-	port = ":12345"
+	port       = ":12345"
+	difficulty = 5
 )
-
-var algorithms = []string{
-	"CuckooCycle",
-}
-
-func generateNonce(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	seed := rand.New(rand.NewSource(time.Now().UnixNano()))
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[seed.Intn(len(charset))]
-	}
-	return string(result)
-}
-
-func checkCuckooCycle(nonce, solution string) bool {
-	graph := cuckoo.NewCuckoo()
-	proof, err := hex.DecodeString(solution)
-	if err != nil {
-		return false
-	}
-
-	sipkey := []byte(nonce)
-	generatedSolution, success := graph.PoW(sipkey)
-	if !success {
-		return false
-	}
-
-	generatedProof := make([]byte, len(generatedSolution)*4)
-	for i, val := range generatedSolution {
-		generatedProof[i*4] = byte(val >> 24)
-		generatedProof[i*4+1] = byte(val >> 16)
-		generatedProof[i*4+2] = byte(val >> 8)
-		generatedProof[i*4+3] = byte(val)
-	}
-
-	compareProofs := func(proof1, proof2 []byte) bool {
-		if len(proof1) != len(proof2) {
-			return false
-		}
-		for i := range proof1 {
-			if proof1[i] != proof2[i] {
-				return false
-			}
-		}
-		return true
-	}
-
-	return compareProofs(proof, generatedProof)
-}
 
 func main() {
 	ln, err := net.Listen("tcp", port)
@@ -88,28 +38,41 @@ func main() {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	algorithm := algorithms[rand.Intn(len(algorithms))]
-	nonce := generateNonce(16)
-
-	_, err := conn.Write([]byte(fmt.Sprintf("%s:%s", algorithm, nonce)))
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
 	if err != nil {
-		slog.Error("conn write", "err", err.Error())
+		fmt.Println("Error reading:", err)
 		return
 	}
 
-	slog.Info("conn", "nonce", nonce, "alg", algorithm)
-
-	buf := make([]byte, 168)
-	n, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("Error reading from connection:", err)
+	message := string(buffer[:n])
+	parts := strings.Split(message, ":")
+	if len(parts) != 3 {
+		fmt.Println("Invalid message format")
 		return
 	}
-	solution := string(buf[:n])
 
-	if checkCuckooCycle(nonce, solution) {
+	data := parts[0]
+	nonce, err := strconv.Atoi(parts[1])
+	if err != nil {
+		fmt.Println("Invalid nonce")
+		return
+	}
+	hash := parts[2]
+
+	if verifyPoW(data, nonce, hash, difficulty) {
 		conn.Write([]byte(randomQuota()))
 	} else {
-		conn.Write([]byte("Invalid POW solution."))
+		response := "Invalid PoW"
+		conn.Write([]byte(response))
 	}
+}
+
+func verifyPoW(data string, nonce int, hash string, difficulty int) bool {
+	record := fmt.Sprintf("%s%d", data, nonce)
+	h := blake2b.Sum256([]byte(record))
+	calculatedHash := hex.EncodeToString(h[:])
+
+	target := strings.Repeat("0", difficulty)
+	return calculatedHash[:difficulty] == target && calculatedHash == hash
 }
