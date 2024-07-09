@@ -1,0 +1,10 @@
+github.com/AidosKuneen/cuckoo v0.0.0-20210309120000-d1ad3b942bbe h1:IPGBYYH4sPNNzf4RhikcPlCceEtgWNEJQijBqjpxy4w=
+github.com/AidosKuneen/cuckoo v0.0.0-20210309120000-d1ad3b942bbe/go.mod h1:Yabr7WT9plIl27P5sJePmc9wN3XMmXL4JZjdGVaf94s=
+github.com/AidosKuneen/numcpu v0.0.0-20210210150138-97011676ebca h1:pIabnic286lG69ngkj9fzFJ/4PUhU7CkEXcdO4EsPFM=
+github.com/AidosKuneen/numcpu v0.0.0-20210210150138-97011676ebca/go.mod h1:UTejm94zEk8LINQRE73pcVBWfv9BewaPVQqmmmBs25E=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+golang.org/x/crypto v0.25.0 h1:ypSNr+bnYL2YhwoMt2zPxHFmbAN1KZs/njMG3hxUp30=
+golang.org/x/crypto v0.25.0/go.mod h1:T+wALwcMOSE0kXgUAnPAHqTLW+XHgcELELW8VaDgm/M=
+golang.org/x/sys v0.22.0 h1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=
+golang.org/x/sys v0.22.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
