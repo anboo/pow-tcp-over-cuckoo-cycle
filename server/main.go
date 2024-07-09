@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -38,6 +39,18 @@ func main() {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
+	challenge, err := generateChallenge()
+	if err != nil {
+		fmt.Println("Error generating challenge:", err)
+		return
+	}
+
+	_, err = conn.Write([]byte(fmt.Sprintf("%s:%d", challenge, difficulty)))
+	if err != nil {
+		fmt.Println("Error writing:", err)
+		return
+	}
+
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
@@ -52,7 +65,7 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
-	data := parts[0]
+	receivedChallenge := parts[0]
 	nonce, err := strconv.Atoi(parts[1])
 	if err != nil {
 		fmt.Println("Invalid nonce")
@@ -60,7 +73,7 @@ func handleConnection(conn net.Conn) {
 	}
 	hash := parts[2]
 
-	if verifyPoW(data, nonce, hash, difficulty) {
+	if receivedChallenge == challenge && verifyPoW(challenge, nonce, hash, difficulty) {
 		conn.Write([]byte(randomQuota()))
 	} else {
 		response := "Invalid PoW"
@@ -68,8 +81,16 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func verifyPoW(data string, nonce int, hash string, difficulty int) bool {
-	record := fmt.Sprintf("%s%d", data, nonce)
+func generateChallenge() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func verifyPoW(challenge string, nonce int, hash string, difficulty int) bool {
+	record := fmt.Sprintf("%s%d", challenge, nonce)
 	h := blake2b.Sum256([]byte(record))
 	calculatedHash := hex.EncodeToString(h[:])
 

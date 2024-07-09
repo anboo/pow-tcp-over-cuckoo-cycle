@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 
 const (
 	serverAddress = "127.0.0.1:12345"
-	difficulty    = 5
 )
 
 func main() {
@@ -32,9 +32,27 @@ func main() {
 	}
 	defer conn.Close()
 
-	data := "Hello, Server!"
-	hash, nonce := performPoW(data)
-	message := fmt.Sprintf("%s:%d:%s", data, nonce, hash)
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Println("Error reading:", err)
+		return
+	}
+
+	parts := strings.Split(string(buffer[:n]), ":")
+	if len(parts) != 2 {
+		slog.Error("failed to parse message")
+		return
+	}
+
+	difficulty, err := strconv.Atoi(parts[1])
+	if err != nil {
+		slog.Error("failed to parse difficulty")
+		return
+	}
+
+	hash, nonce := performPoW(parts[0], difficulty)
+	message := fmt.Sprintf("%s:%d:%s", parts[0], nonce, hash)
 
 	_, err = conn.Write([]byte(message))
 	if err != nil {
@@ -42,8 +60,8 @@ func main() {
 		return
 	}
 
-	buffer := make([]byte, 1024)
-	n, err := conn.Read(buffer)
+	buffer = make([]byte, 1024)
+	n, err = conn.Read(buffer)
 	if err != nil {
 		slog.Error("failed to read message", "error", err)
 		return
@@ -51,16 +69,14 @@ func main() {
 	solution = string(buffer[:n])
 }
 
-func performPoW(data string) (string, int) {
-	var (
-		nonce  = 0
-		hash   string
-		target = strings.Repeat("0", difficulty)
-	)
+func performPoW(challenge string, difficulty int) (string, int) {
+	nonce := 0
+	target := strings.Repeat("0", difficulty)
+	var hash string
 
 	for {
 		nonce++
-		record := fmt.Sprintf("%s%d", data, nonce)
+		record := fmt.Sprintf("%s%d", challenge, nonce)
 		h := blake2b.Sum256([]byte(record))
 		hash = hex.EncodeToString(h[:])
 
