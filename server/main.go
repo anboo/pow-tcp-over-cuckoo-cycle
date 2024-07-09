@@ -108,8 +108,7 @@ func handleConnection(conn net.Conn) {
 	solution := string(buf[:n])
 
 	if checkCuckooCycle(nonce, solution) {
-		quote := "This is a quote from the book of wisdom."
-		conn.Write([]byte(quote))
+		conn.Write([]byte(randomQuota()))
 	} else {
 		conn.Write([]byte("Invalid POW solution."))
 	}

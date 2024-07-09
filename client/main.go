@@ -10,8 +10,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"runtime"
-	"runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +27,11 @@ func findCuckooCycleSolution(ctx context.Context, nonce string) (string, error) 
 	var success bool
 
 	for !success {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
 		proof, success = solver.PoW([]byte(nonce))
 	}
 
@@ -52,25 +55,6 @@ func findCuckooCycleSolution(ctx context.Context, nonce string) (string, error) 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	f, err := os.Create("cpu.prof")
-	if err != nil {
-		log.Fatal("could not create CPU profile: ", err)
-	}
-	defer f.Close()
-
-	if err := pprof.StartCPUProfile(f); err != nil {
-		log.Fatal("could not start CPU profile: ", err)
-	}
-	defer pprof.StopCPUProfile()
-
-	fmem, err := os.Create("mem.prof")
-	if err != nil {
-		log.Fatal("could not create memory profile: ", err)
-	}
-	defer fmem.Close()
-
-	runtime.GC()
 
 	var (
 		attempt = 1
@@ -100,10 +84,6 @@ func main() {
 		case err != nil:
 			panic(err)
 		default:
-			if err := pprof.WriteHeapProfile(fmem); err != nil {
-				log.Fatal("could not write memory profile: ", err)
-			}
-
 			slog.Info("done", "solution", solution, "attempts", attempt, "duration", time.Since(startAt))
 			conn.Write([]byte(solution))
 
@@ -125,7 +105,7 @@ func startConnectionChallenge(ctx context.Context, buf []byte, n int) (string, e
 	algorithm := parts[0]
 	nonce := parts[1]
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*3)
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
 	var (

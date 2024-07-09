@@ -1,6 +1,6 @@
 .PHONY: all build-server build-client run-server run-client
 
-all: build-server build-client run-server run-client
+all: clean build-server build-client run-server run-client
 
 build-server:
 	@echo "================ BUILD TCP SERVER ===================="
@@ -14,10 +14,14 @@ build-client:
 
 run-server:
 	@echo "================= RUN TCP SERVER ====================="
+	#docker stop tcp-server
+	#docker rm tcp-server
 	docker run -d --name tcp-server my-tcp-server
 
 run-client:
 	@echo "================= RUN TCP CLIENT ====================="
+	#docker stop tcp-client
+	#docker rm tcp-client
 	docker run --network host my-tcp-client
 
 clean:
