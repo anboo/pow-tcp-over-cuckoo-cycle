@@ -164,9 +164,16 @@ func adjustDifficulty(times []time.Duration, target time.Duration, currentDiffic
 	averageTime := totalTime / time.Duration(len(times))
 
 	if averageTime < target {
-		return currentDifficulty + 1
+		currentDifficulty = currentDifficulty + 1
 	} else if averageTime > target {
-		return currentDifficulty - 1
+		currentDifficulty = currentDifficulty - 1
 	}
+
+	if currentDifficulty < 1 {
+		currentDifficulty = 1
+	} else if currentDifficulty > 10 {
+		currentDifficulty = 10
+	}
+
 	return currentDifficulty
 }
