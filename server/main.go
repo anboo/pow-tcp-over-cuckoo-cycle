@@ -2,19 +2,24 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
-
-	"golang.org/x/crypto/blake2b"
+	"time"
 )
 
 const (
 	port = ":12345"
 	// можно увеличивать в реальном времени во время ддос атак, например
 	difficulty = 5
+
+	waitResponseDeadline  = 10 * time.Second
+	sendChallengeDeadline = 3 * time.Second
+	sendResultDeadline    = 5 * time.Second
 )
 
 func main() {
@@ -38,47 +43,73 @@ func main() {
 }
 
 func handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			slog.Debug("close connection:", err)
+		}
+	}()
 
 	challenge, err := generateChallenge()
 	if err != nil {
-		fmt.Println("Error generating challenge:", err)
+		slog.Error("error generating challenge:", err)
 		return
 	}
 
-	_, err = conn.Write([]byte(fmt.Sprintf("%s:%d", challenge, difficulty)))
+	err = conn.SetWriteDeadline(time.Now().Add(sendChallengeDeadline))
 	if err != nil {
-		fmt.Println("Error writing:", err)
+		slog.Error("error setting write deadline:", err)
+		return
+	}
+	resp := []byte(fmt.Sprintf("%s:%d", challenge, difficulty))
+	_, err = conn.Write(resp)
+	if err != nil {
+		slog.Debug("send challenge:", err)
+		return
+	}
+
+	err = conn.SetReadDeadline(time.Now().Add(waitResponseDeadline))
+	if err != nil {
+		slog.Error("error setting read deadline:", err)
 		return
 	}
 
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
-		fmt.Println("Error reading:", err)
+		slog.Error("error reading:", err)
 		return
 	}
 
 	message := string(buffer[:n])
 	parts := strings.Split(message, ":")
 	if len(parts) != 3 {
-		fmt.Println("Invalid message format")
+		slog.Debug("invalid parts:", message)
 		return
 	}
 
 	receivedChallenge := parts[0]
 	nonce, err := strconv.Atoi(parts[1])
 	if err != nil {
-		fmt.Println("Invalid nonce")
+		slog.Debug("invalid nonce:", message)
 		return
 	}
 	hash := parts[2]
 
+	err = conn.SetWriteDeadline(time.Now().Add(sendResultDeadline))
+	if err != nil {
+		slog.Error("error setting write deadline:", err)
+		return
+	}
 	if receivedChallenge == challenge && verifyPoW(challenge, nonce, hash, difficulty) {
-		conn.Write([]byte(randomQuota()))
+		_, err = conn.Write([]byte(randomQuote()))
 	} else {
 		response := "Invalid PoW"
-		conn.Write([]byte(response))
+		_, err = conn.Write([]byte(response))
+	}
+
+	if err != nil {
+		slog.Error("error send challenge result:", err)
 	}
 }
 
@@ -92,7 +123,7 @@ func generateChallenge() (string, error) {
 
 func verifyPoW(challenge string, nonce int, hash string, difficulty int) bool {
 	record := fmt.Sprintf("%s%d", challenge, nonce)
-	h := blake2b.Sum256([]byte(record))
+	h := sha256.Sum256([]byte(record))
 	calculatedHash := hex.EncodeToString(h[:])
 
 	target := strings.Repeat("0", difficulty)

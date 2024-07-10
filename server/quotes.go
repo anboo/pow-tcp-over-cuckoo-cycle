@@ -57,7 +57,7 @@ var (
 	randomizer = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
-func randomQuota() string {
+func randomQuote() string {
 	index := randomizer.Intn(len(wordOfWisdomQuotes))
 	return wordOfWisdomQuotes[index]
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -8,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/blake2b"
 )
 
 const (
@@ -32,7 +31,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 34)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		fmt.Println("Error reading:", err)
@@ -78,7 +77,7 @@ func performPoW(challenge string, difficulty int) (string, int) {
 	for {
 		nonce++
 		record := fmt.Sprintf("%s%d", challenge, nonce)
-		h := blake2b.Sum256([]byte(record))
+		h := sha256.Sum256([]byte(record))
 		hash = hex.EncodeToString(h[:])
 
 		if hash[:difficulty] == target {
