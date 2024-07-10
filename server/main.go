@@ -27,7 +27,7 @@ const (
 )
 
 var (
-	mutex          sync.Mutex
+	mutex          sync.RWMutex
 	difficulty     = initialDifficulty
 	calculateTimes []time.Duration
 )
@@ -71,9 +71,9 @@ func handleConnection(conn net.Conn) {
 		slog.Error("error setting write deadline:", err)
 		return
 	}
-	mutex.Lock()
+	mutex.RLock()
 	currentDifficulty := difficulty
-	mutex.Unlock()
+	mutex.RUnlock()
 	resp := []byte(fmt.Sprintf("%s:%d", challenge, currentDifficulty))
 	_, err = conn.Write(resp)
 	if err != nil {
