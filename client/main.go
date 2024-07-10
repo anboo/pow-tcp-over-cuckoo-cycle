@@ -71,7 +71,6 @@ func main() {
 
 func performPoW(challenge string, difficulty int) (string, int) {
 	nonce := 0
-	target := strings.Repeat("0", difficulty)
 	var hash string
 
 	for {
@@ -80,7 +79,7 @@ func performPoW(challenge string, difficulty int) (string, int) {
 		h := sha256.Sum256([]byte(record))
 		hash = hex.EncodeToString(h[:])
 
-		if hash[:difficulty] == target {
+		if hash[:difficulty] == challenge[:difficulty] {
 			break
 		}
 	}

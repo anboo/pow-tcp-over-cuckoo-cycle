@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -17,10 +19,15 @@ const (
 	// можно увеличивать в реальном времени во время ддос атак, например
 	difficulty = 5
 
+	maxRateConnectionsPerSecond = 100
+	burstConnectionPerPeriod    = 10000
+
 	waitResponseDeadline  = 10 * time.Second
 	sendChallengeDeadline = 3 * time.Second
 	sendResultDeadline    = 5 * time.Second
 )
+
+var limiter = rate.NewLimiter(maxRateConnectionsPerSecond, burstConnectionPerPeriod)
 
 func main() {
 	ln, err := net.Listen("tcp", port)
@@ -50,6 +57,12 @@ func handleConnection(conn net.Conn) {
 		}
 	}()
 
+	if !limiter.Allow() {
+		slog.Debug("Too many requests")
+		conn.Write([]byte("Too many requests\n"))
+		return
+	}
+
 	challenge, err := generateChallenge()
 	if err != nil {
 		slog.Error("error generating challenge:", err)
@@ -74,7 +87,7 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 110)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		slog.Error("error reading:", err)
@@ -126,6 +139,6 @@ func verifyPoW(challenge string, nonce int, hash string, difficulty int) bool {
 	h := sha256.Sum256([]byte(record))
 	calculatedHash := hex.EncodeToString(h[:])
 
-	target := strings.Repeat("0", difficulty)
+	target := challenge[:difficulty]
 	return calculatedHash[:difficulty] == target && calculatedHash == hash
 }
