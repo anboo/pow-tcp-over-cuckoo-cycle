@@ -18,7 +18,7 @@ const (
 	port = ":12345"
 
 	initialDifficulty   = 1
-	targetCalculateTime = 5 * time.Second
+	targetCalculateTime = 500 * time.Millisecond
 	calculateWindow     = 5
 
 	waitResponseDeadline  = 2 * time.Minute

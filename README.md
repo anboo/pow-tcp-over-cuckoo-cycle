@@ -76,11 +76,11 @@ Server is listening on port :12345
 2024/07/10 07:35:43 INFO handle conn currentDifficulty=3 nonce=309 size=101
 ```
 
-при дефолтной цели расчета времени хэша - 3 секунды, окна последних расчетов = 5 элементов, сложности - 1
+при дефолтной цели расчета времени хэша - 500 ms, окна последних расчетов = 5 элементов, сложности - 1
 ```go
 const (
     initialDifficulty   = 1
-    targetCalculateTime = 5 * time.Second
+    targetCalculateTime = 500 * time.Millisecond
     calculateWindow     = 5
 )
 ```
