@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -9,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/scrypt"
 )
 
 const (
@@ -73,13 +74,19 @@ func performPoW(challenge string, difficulty int) (string, int) {
 	nonce := 0
 	var hash string
 
+	// Используем параметр N, который увеличивается с ростом сложности
+	N := 1024 * (1 << uint(difficulty)) // Начальное значение 1024, увеличивается экспоненциально
+	r := 8
+	p := 1
+
 	for {
 		nonce++
 		record := fmt.Sprintf("%s%d", challenge, nonce)
-		h := sha256.Sum256([]byte(record))
+		h, _ := scrypt.Key([]byte(record), []byte(challenge), N, r, p, 32)
 		hash = hex.EncodeToString(h[:])
 
-		if hash[:difficulty] == challenge[:difficulty] {
+		// Простая проверка: хэш должен начинаться с двух нулей для усложнения задачи
+		if strings.HasPrefix(hash, "00") {
 			break
 		}
 	}

@@ -2,32 +2,35 @@ package main
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
+	"golang.org/x/crypto/scrypt"
 )
 
 const (
 	port = ":12345"
-	// можно увеличивать в реальном времени во время ддос атак, например
-	difficulty = 5
 
-	maxRateConnectionsPerSecond = 100
-	burstConnectionPerPeriod    = 10000
+	initialDifficulty   = 1
+	targetCalculateTime = 5 * time.Second
+	calculateWindow     = 5
 
-	waitResponseDeadline  = 10 * time.Second
+	waitResponseDeadline  = 2 * time.Minute
 	sendChallengeDeadline = 3 * time.Second
 	sendResultDeadline    = 5 * time.Second
 )
 
-var limiter = rate.NewLimiter(maxRateConnectionsPerSecond, burstConnectionPerPeriod)
+var (
+	mutex          sync.Mutex
+	difficulty     = initialDifficulty
+	calculateTimes []time.Duration
+)
 
 func main() {
 	ln, err := net.Listen("tcp", port)
@@ -57,12 +60,6 @@ func handleConnection(conn net.Conn) {
 		}
 	}()
 
-	if !limiter.Allow() {
-		slog.Debug("Too many requests")
-		conn.Write([]byte("Too many requests\n"))
-		return
-	}
-
 	challenge, err := generateChallenge()
 	if err != nil {
 		slog.Error("error generating challenge:", err)
@@ -74,13 +71,17 @@ func handleConnection(conn net.Conn) {
 		slog.Error("error setting write deadline:", err)
 		return
 	}
-	resp := []byte(fmt.Sprintf("%s:%d", challenge, difficulty))
+	mutex.Lock()
+	currentDifficulty := difficulty
+	mutex.Unlock()
+	resp := []byte(fmt.Sprintf("%s:%d", challenge, currentDifficulty))
 	_, err = conn.Write(resp)
 	if err != nil {
 		slog.Debug("send challenge:", err)
 		return
 	}
 
+	networkStartTime := time.Now()
 	err = conn.SetReadDeadline(time.Now().Add(waitResponseDeadline))
 	if err != nil {
 		slog.Error("error setting read deadline:", err)
@@ -93,28 +94,38 @@ func handleConnection(conn net.Conn) {
 		slog.Error("error reading:", err)
 		return
 	}
+	networkDuration := time.Since(networkStartTime)
 
-	message := string(buffer[:n])
-	parts := strings.Split(message, ":")
+	receivedMessage := string(buffer[:n])
+	parts := strings.Split(receivedMessage, ":")
 	if len(parts) != 3 {
-		slog.Debug("invalid parts:", message)
+		slog.Debug("invalid parts:", receivedMessage)
 		return
 	}
 
 	receivedChallenge := parts[0]
 	nonce, err := strconv.Atoi(parts[1])
 	if err != nil {
-		slog.Debug("invalid nonce:", message)
+		slog.Debug("invalid nonce:", receivedMessage)
 		return
 	}
 	hash := parts[2]
+
+	slog.Info("handle conn", "currentDifficulty", currentDifficulty, "nonce", nonce, "size", len(receivedMessage))
 
 	err = conn.SetWriteDeadline(time.Now().Add(sendResultDeadline))
 	if err != nil {
 		slog.Error("error setting write deadline:", err)
 		return
 	}
-	if receivedChallenge == challenge && verifyPoW(challenge, nonce, hash, difficulty) {
+	if receivedChallenge == challenge && verifyPoW(challenge, nonce, hash, currentDifficulty) {
+		mutex.Lock()
+		calculateTimes = append(calculateTimes, networkDuration)
+		if len(calculateTimes) >= calculateWindow {
+			difficulty = adjustDifficulty(calculateTimes, targetCalculateTime, currentDifficulty)
+			calculateTimes = calculateTimes[1:]
+		}
+		mutex.Unlock()
 		_, err = conn.Write([]byte(randomQuote()))
 	} else {
 		response := "Invalid PoW"
@@ -136,9 +147,26 @@ func generateChallenge() (string, error) {
 
 func verifyPoW(challenge string, nonce int, hash string, difficulty int) bool {
 	record := fmt.Sprintf("%s%d", challenge, nonce)
-	h := sha256.Sum256([]byte(record))
+	N := 1024 * (1 << uint(difficulty)) // Начальное значение 1024, увеличивается экспоненциально
+	r := 8
+	p := 1
+	h, _ := scrypt.Key([]byte(record), []byte(challenge), N, r, p, 32)
 	calculatedHash := hex.EncodeToString(h[:])
 
-	target := challenge[:difficulty]
-	return calculatedHash[:difficulty] == target && calculatedHash == hash
+	return strings.HasPrefix(calculatedHash, "00") && calculatedHash == hash
+}
+
+func adjustDifficulty(times []time.Duration, target time.Duration, currentDifficulty int) int {
+	totalTime := time.Duration(0)
+	for _, t := range times {
+		totalTime += t
+	}
+	averageTime := totalTime / time.Duration(len(times))
+
+	if averageTime < target {
+		return currentDifficulty + 1
+	} else if averageTime > target {
+		return currentDifficulty - 1
+	}
+	return currentDifficulty
 }
