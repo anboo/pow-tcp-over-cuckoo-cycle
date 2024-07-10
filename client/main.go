@@ -39,7 +39,8 @@ func main() {
 		return
 	}
 
-	parts := strings.Split(string(buffer[:n]), ":")
+	msg := string(buffer[:n])
+	parts := strings.Split(msg, ":")
 	if len(parts) != 2 {
 		slog.Error("failed to parse message")
 		return
@@ -47,7 +48,7 @@ func main() {
 
 	difficulty, err := strconv.Atoi(parts[1])
 	if err != nil {
-		slog.Error("failed to parse difficulty")
+		slog.Error("failed to parse difficulty", "msg", msg)
 		return
 	}
 

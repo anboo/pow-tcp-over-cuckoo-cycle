@@ -16,7 +16,7 @@ run-server:
 	@echo "================= RUN TCP SERVER ====================="
 	#docker stop tcp-server
 	#docker rm tcp-server
-	docker run -d --name tcp-server my-tcp-server
+	docker run -d --name tcp-server -p12345:12345 my-tcp-server
 
 run-client:
 	@echo "================= RUN TCP CLIENT ====================="
